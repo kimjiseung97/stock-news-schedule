@@ -1,0 +1,32 @@
+{
+  "name": "stock-news-schedule",
+  "version": "0.1.0",
+  "private": true,
+  "description": "stockNews(Kotlin) TB_STOCK 스키마를 공유하는 Node/TypeScript 배치 서버 - 종목 수집부터 시작",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "seed:once": "tsx src/jobs/stockSeedJob.ts",
+    "news-collect:once": "tsx src/jobs/runNewsCollectOnce.ts",
+    "news-cleanup:once": "tsx src/jobs/runNewsCleanupOnce.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:pull": "prisma db pull",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.3.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.5",
+    "@types/node-cron": "^3.0.11",
+    "prisma": "^6.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

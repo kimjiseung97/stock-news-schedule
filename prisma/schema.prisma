@@ -1,0 +1,39 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Kotlin(stockNews)의 TB_STOCK을 그대로 매핑. 물리 FK 없이 STOCK_ID로 논리 참조하는 컨벤션을 유지한다.
+model Stock {
+  id                BigInt    @id @default(autoincrement()) @map("ID")
+  ticker            String    @unique @map("TICKER") @db.VarChar(10)
+  name              String    @map("NAME") @db.VarChar(255)
+  cik               BigInt?   @map("CIK")
+  theme             String?   @map("THEME") @db.VarChar(30)
+  koreanName        String?   @map("KOREAN_NAME") @db.VarChar(100)
+  detailAttemptedAt DateTime? @map("DETAIL_ATTEMPTED_AT")
+  status            String    @default("ACTIVE") @map("STATUS") @db.VarChar(20)
+  delistedAt        DateTime? @map("DELISTED_AT")
+
+  @@index([theme], name: "IDX_TB_STOCK_THEME")
+  @@map("TB_STOCK")
+}
+
+// Kotlin(stockNews)의 TB_STOCK_NEWS를 그대로 매핑. 종목별 뉴스 수집 배치가 적재, 7일 보관 후 정리 배치가 삭제.
+model StockNews {
+  id          BigInt   @id @default(autoincrement()) @map("ID")
+  stockId     BigInt   @map("STOCK_ID")
+  title       String   @map("TITLE") @db.VarChar(500)
+  content     String?  @map("CONTENT") @db.VarChar(4000)
+  url         String   @map("URL") @db.VarChar(500)
+  collectedAt DateTime @default(now()) @map("COLLECTED_AT")
+
+  @@unique([stockId, url], name: "UK_TB_STOCK_NEWS_STOCK_URL")
+  @@index([stockId], name: "IDX_TB_STOCK_NEWS_STOCK_ID")
+  @@index([collectedAt], name: "IDX_TB_STOCK_NEWS_COLLECTED_AT")
+  @@map("TB_STOCK_NEWS")
+}
