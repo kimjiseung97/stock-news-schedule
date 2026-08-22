@@ -36,6 +36,22 @@ interface CacheEntry {
 // 검색어별 조회 결과를 TTL 동안 전역 캐시해서, 같은 종목을 여러 워커가 동시에 처리할 때 API 호출을 한 번으로 줄인다(Kotlin NaverNewsClient와 동일 전략).
 const cache = new Map<string, CacheEntry>();
 
+// 네이버 오픈API는 동시 요청 수보다 초당 호출 빈도에 민감하게 429를 반환한다.
+// concurrency(pLimit)와 별개로, 실제 API 호출 자체를 전역적으로 이 간격 이하로 못 나가도록 강제한다.
+const MIN_REQUEST_INTERVAL_MS = 200; // 초당 최대 5건
+let nextSlotAt = 0;
+
+function reserveSlot(): number {
+  const now = Date.now();
+  const start = Math.max(now, nextSlotAt);
+  nextSlotAt = start + MIN_REQUEST_INTERVAL_MS;
+  return start;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export async function fetchNaverNews(query: string): Promise<NewsArticle[]> {
   const cached: CacheEntry | undefined = cache.get(query);
   const ttlMs: number = env.naverNews.cacheTtlMinutes * 60_000;
@@ -49,6 +65,12 @@ export async function fetchNaverNews(query: string): Promise<NewsArticle[]> {
 }
 
 async function fetchFromApi(query: string): Promise<NewsArticle[]> {
+  const slotAt = reserveSlot();
+  const wait = slotAt - Date.now();
+  if (wait > 0) {
+    await sleep(wait);
+  }
+
   const url = new URL("https://openapi.naver.com/v1/search/news.json");
   url.searchParams.set("query", query);
   url.searchParams.set("display", String(env.naverNews.maxArticlesPerQuery));
