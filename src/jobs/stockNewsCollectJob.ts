@@ -15,10 +15,9 @@ export async function runStockNewsCollectJob(): Promise<void> {
     ...(env.newsCollect.limit ? { take: env.newsCollect.limit } : {}),
   });
   console.log(`[stockNewsCollect] target stocks: ${stocks.length}`);
-  // 동시에 50개 요청만 허용
-  const limit = pLimit(50);
+  const limit = pLimit(env.newsCollect.concurrency);
 
-  // 종목별로 하나의 작업(task)을 만들고, pLimit이 최대 50개까지만 동시 실행되도록 큐잉한다.
+  // 종목별로 하나의 작업(task)을 만들고, pLimit이 env.newsCollect.concurrency개까지만 동시 실행되도록 큐잉한다.
   const tasks = stocks.map(stock => limit(async () => {
     try {
       // 한글명이 있으면 한글명, 없으면 영문명으로 네이버 뉴스 검색 (naverNewsClient 내부에서 TTL 캐시됨)
@@ -51,6 +50,7 @@ export async function runStockNewsCollectJob(): Promise<void> {
       // 종목 하나가 실패해도 나머지 종목 처리는 계속 진행(전체 배치를 막지 않음).
       console.error(`${stock.ticker} 실패:`, err);
     }
-    await Promise.allSettled(tasks);
   }));
+
+  await Promise.allSettled(tasks);
 }
