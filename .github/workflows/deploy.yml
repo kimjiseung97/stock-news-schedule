@@ -49,8 +49,27 @@ jobs:
           command_timeout: 40m
           envs: DB_USERNAME,DB_PASSWORD,DB_NAME,NAVER_NEWS_CLIENT_ID,NAVER_NEWS_CLIENT_SECRET
           script: |
+            mkdir -p ~/stock-news-schedule
             cd ~/stock-news-schedule
-            git pull
+            cat > docker-compose.yml <<'COMPOSE_EOF'
+            services:
+              app:
+                image: ghcr.io/kimjiseung97/stock-news-schedule:latest
+                restart: unless-stopped
+                environment:
+                  TZ: Asia/Seoul
+                env_file:
+                  - .env
+                expose:
+                  - "4000"
+                networks:
+                  - stocknews_net
+
+            networks:
+              stocknews_net:
+                external: true
+                name: stocknews_default
+            COMPOSE_EOF
             cat > .env <<EOF
             DATABASE_URL=mysql://$DB_USERNAME:$DB_PASSWORD@db:3306/$DB_NAME
             NAVER_NEWS_CLIENT_ID=$NAVER_NEWS_CLIENT_ID
