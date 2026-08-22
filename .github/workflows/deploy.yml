@@ -1,0 +1,61 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/kimjiseung97/stock-news-schedule:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          # stockNews(코틀린) compose가 띄운 mariadb 컨테이너에 도커 내부 네트워크로 접속한다.
+          # DB_USERNAME / DB_PASSWORD / DB_NAME은 stockNews와 동일한 DB이므로 그쪽과 같은 값이어야 함.
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          NAVER_NEWS_CLIENT_ID: ${{ secrets.NAVER_NEWS_CLIENT_ID }}
+          NAVER_NEWS_CLIENT_SECRET: ${{ secrets.NAVER_NEWS_CLIENT_SECRET }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          command_timeout: 40m
+          envs: DB_USERNAME,DB_PASSWORD,DB_NAME,NAVER_NEWS_CLIENT_ID,NAVER_NEWS_CLIENT_SECRET
+          script: |
+            cd ~/stock-news-schedule
+            git pull
+            cat > .env <<EOF
+            DATABASE_URL=mysql://$DB_USERNAME:$DB_PASSWORD@db:3306/$DB_NAME
+            NAVER_NEWS_CLIENT_ID=$NAVER_NEWS_CLIENT_ID
+            NAVER_NEWS_CLIENT_SECRET=$NAVER_NEWS_CLIENT_SECRET
+            PORT=4000
+            EOF
+            docker compose pull
+            docker compose up -d

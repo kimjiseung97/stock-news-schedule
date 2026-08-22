@@ -1,0 +1,19 @@
+services:
+  app:
+    image: ghcr.io/kimjiseung97/stock-news-schedule:latest
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Seoul
+    env_file:
+      - .env
+    expose:
+      - "4000"
+    networks:
+      - stocknews_net
+
+networks:
+  stocknews_net:
+    # stockNews(Kotlin) docker-compose가 자동 생성하는 기본 네트워크에 붙는다.
+    # 서버에서 실제 이름은 `docker network ls`로 확인 (프로젝트 폴더명 기준 <폴더명>_default).
+    external: true
+    name: stocknews_default
