@@ -37,14 +37,21 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 
 // 네이버 오픈API는 동시 요청 수보다 초당 호출 빈도에 민감하게 429를 반환한다.
-// concurrency(pLimit)와 별개로, 실제 API 호출 자체를 전역적으로 이 간격 이하로 못 나가도록 강제한다.
-const MIN_REQUEST_INTERVAL_MS = 200; // 초당 최대 5건
-let nextSlotAt = 0;
+// 다만 전역으로 요청 하나만 순차 처리하면(레인 1개) concurrency(pLimit) 설정과 무관하게
+// 처리량이 초당 5건으로 고정돼버려서, 종목 수가 많을 때(1만+) 체감상 너무 느려진다.
+// pLimit의 concurrency만큼 "레인"을 두고 라운드로빈으로 분배해, 레인별로는 200ms 간격을 지키면서
+// 전체적으로는 concurrency배만큼 병렬 처리되도록 한다(레인 8개 기준 실질 초당 40건).
+const MIN_REQUEST_INTERVAL_MS = 200; // 레인 하나당 최대 초당 5건
+const LANE_COUNT = env.newsCollect.concurrency;
+const laneNextSlotAt: number[] = new Array(LANE_COUNT).fill(0);
+let laneCursor = 0;
 
 function reserveSlot(): number {
+  const lane = laneCursor % LANE_COUNT;
+  laneCursor += 1;
   const now = Date.now();
-  const start = Math.max(now, nextSlotAt);
-  nextSlotAt = start + MIN_REQUEST_INTERVAL_MS;
+  const start = Math.max(now, laneNextSlotAt[lane]);
+  laneNextSlotAt[lane] = start + MIN_REQUEST_INTERVAL_MS;
   return start;
 }
 
