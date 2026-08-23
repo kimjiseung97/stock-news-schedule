@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma";
 import pLimit from 'p-limit';
 import { fetchNaverNews, type NewsArticle } from "../services/naverNewsClient";
 import { env } from "../config/env";
+import { nowSeoulNaive } from "../lib/time";
 
 // [배치] ACTIVE 종목 전체를 대상으로 네이버에서 뉴스를 조회해 TB_STOCK_NEWS에 적재한다.
 // 같은 기사가 재수집되는 것을 막기 위해 (STOCK_ID, URL) 기준으로 이미 있는 기사는 건너뛴다.
@@ -35,11 +36,13 @@ export async function runStockNewsCollectJob(): Promise<void> {
       if (newArticles.length === 0) {
         return;
       }
+      // collectedAt은 DB 네이티브 default(UTC)에 맡기지 않고 KST 벽시계 값을 명시적으로 넣는다(../lib/time.ts 참고).
       const data: Prisma.StockNewsCreateManyInput[] = newArticles.map(a => ({
         stockId: stock.id,
         title: a.title,
         content: a.description ?? null,
         url: a.url,
+        collectedAt: nowSeoulNaive(),
       }))
       // skipDuplicates: (stockId, url) 유니크 제약과 겹치는 행이 있어도 에러 없이 건너뛰고 나머지를 삽입.
       const result: Prisma.BatchPayload = await prisma.stockNews.createMany({
