@@ -93,7 +93,10 @@ async function fetchFromApi(query: string): Promise<NewsArticle[]> {
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
-      throw new Error(`naver news api status ${res.status}`);
+      // 429가 "일일 할당량 초과"인지 "초당 요청 한도 초과"인지는 HTTP status만으론 구분이 안 되고
+      // 응답 body의 errorCode/errorMessage로만 구분 가능하다(예: 할당량 초과는 errorCode "010").
+      const errorBody: string = await res.text().catch(() => "");
+      throw new Error(`naver news api status ${res.status}: ${errorBody}`);
     }
 
     const body: NaverNewsSearchResponse = (await res.json()) as NaverNewsSearchResponse;
