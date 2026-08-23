@@ -27,6 +27,7 @@ npm run prisma:pull         # 공유 MariaDB 스키마를 introspect하여 schem
 
 - `dev`가 기본 개발 브랜치. 기능 작업은 dev 기반 브랜치에서 진행 후 dev로 병합.
 - `dev` → `main`으로 push되면 GitHub Actions가 배포 트리거 (`.github/workflows/deploy.yml`: SSH로 접속해 `git pull` + `docker compose up -d --build`).
+- 커밋후 어떤기능을 개발했는지 새기능 feat : , 에러수정 fix : , 코드 리펙토링 refactor : , 사용하지 않는 라이브러리 제거 remove : 로 한글로 커밋메시지 남길것
 
 ## API 기능 개발 완료 시
 
