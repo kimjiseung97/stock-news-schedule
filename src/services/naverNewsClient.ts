@@ -36,27 +36,32 @@ interface CacheEntry {
 // 검색어별 조회 결과를 TTL 동안 전역 캐시해서, 같은 종목을 여러 워커가 동시에 처리할 때 API 호출을 한 번으로 줄인다(Kotlin NaverNewsClient와 동일 전략).
 const cache = new Map<string, CacheEntry>();
 
-// 네이버 오픈API는 동시 요청 수보다 초당 호출 빈도에 민감하게 429를 반환한다.
-// 다만 전역으로 요청 하나만 순차 처리하면(레인 1개) concurrency(pLimit) 설정과 무관하게
-// 처리량이 초당 5건으로 고정돼버려서, 종목 수가 많을 때(1만+) 체감상 너무 느려진다.
-// pLimit의 concurrency만큼 "레인"을 두고 라운드로빈으로 분배해, 레인별로는 200ms 간격을 지키면서
-// 전체적으로는 concurrency배만큼 병렬 처리되도록 한다(레인 8개 기준 실질 초당 40건).
-const MIN_REQUEST_INTERVAL_MS = 200; // 레인 하나당 최대 초당 5건
-const LANE_COUNT = env.newsCollect.concurrency;
-const laneNextSlotAt: number[] = new Array(LANE_COUNT).fill(0);
-let laneCursor = 0;
-
-function reserveSlot(): number {
-  const lane = laneCursor % LANE_COUNT;
-  laneCursor += 1;
-  const now = Date.now();
-  const start = Math.max(now, laneNextSlotAt[lane]);
-  laneNextSlotAt[lane] = start + MIN_REQUEST_INTERVAL_MS;
-  return start;
-}
+// 네이버 검색 오픈API 공식 제한은 초당 10건(일일 25,000건은 종목 수 대비 여유 있어 문제 안 됨).
+// 초(정수) 단위 버킷에 카운터를 두고, 그 초에 10건이 이미 나갔으면 다음 초까지 대기한다.
+// Node는 단일 프로세스·싱글 스레드 이벤트 루프라 이 카운터 접근에 레이스 컨디션이 없어 인메모리로 충분하다
+// (여러 인스턴스로 수평 확장하게 되면 그때는 Redis 같은 공유 저장소로 옮겨야 한다).
+const MAX_REQUESTS_PER_SECOND = 10;
+let bucketSecond = 0;
+let bucketCount = 0;
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function reserveSlot(): Promise<void> {
+  for (;;) {
+    const currentSecond = Math.floor(Date.now() / 1000);
+    if (currentSecond !== bucketSecond) {
+      bucketSecond = currentSecond;
+      bucketCount = 0;
+    }
+    if (bucketCount < MAX_REQUESTS_PER_SECOND) {
+      bucketCount += 1;
+      return;
+    }
+    const waitMs = (bucketSecond + 1) * 1000 - Date.now();
+    await sleep(Math.max(waitMs, 10));
+  }
 }
 
 export async function fetchNaverNews(query: string): Promise<NewsArticle[]> {
@@ -72,11 +77,7 @@ export async function fetchNaverNews(query: string): Promise<NewsArticle[]> {
 }
 
 async function fetchFromApi(query: string): Promise<NewsArticle[]> {
-  const slotAt = reserveSlot();
-  const wait = slotAt - Date.now();
-  if (wait > 0) {
-    await sleep(wait);
-  }
+  await reserveSlot();
 
   const url = new URL("https://openapi.naver.com/v1/search/news.json");
   url.searchParams.set("query", query);
