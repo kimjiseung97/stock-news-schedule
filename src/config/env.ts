@@ -13,9 +13,20 @@ function optionalNumber(name: string, fallback: number): number {
   return value ? Number(value) : fallback;
 }
 
+function optionalBoolean(name: string, fallback: boolean): boolean {
+  const value = process.env[name];
+  if (value === undefined || value === "") return fallback;
+  return value.toLowerCase() === "true" || value === "1";
+}
+
 export const env = {
   port: optionalNumber("PORT", 4000),
   databaseUrl: required("DATABASE_URL"),
+
+  // dev/prod 서버가 같은 TB_STOCK_NEWS를 바라보므로, 개발 서버에서는 false로 내려 수집 배치가
+  // 중복으로 돌지 않게 한다(형제 Kotlin 프로젝트의 SCHEDULER_ENABLED와 동일한 스위치).
+  // false여도 express 서버는 그대로 뜨고, npm run news-collect:once 같은 수동 실행은 가능하다.
+  schedulerEnabled: optionalBoolean("SCHEDULER_ENABLED", true),
 
   naverNews: {
     clientId: required("NAVER_NEWS_CLIENT_ID"),

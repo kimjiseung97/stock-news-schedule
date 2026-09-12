@@ -1,25 +1,23 @@
-# .github/workflows/deploy.yml
-# main → 프로덕션(신규 상용 서버)
+# .github/workflows/deploy-dev.yml
+# dev → GCP 개발망
 #
-# 형제 Kotlin 프로젝트(stockNews)의 deploy.yml과 동일한 구조로 맞췄다:
-#  - 이미지에 커밋 SHA 태그 추가(롤백 가능), .env에 IMAGE_TAG 주입 → compose가 ${IMAGE_TAG} 참조
-#  - environment: main (Environment secrets / 승인 게이트)
-#  - concurrency (연속 push 시 이전 배포 취소)
-#  - 헬스체크 (컨테이너만 뜨고 앱이 죽은 상태를 잡음)
-#  - SCHEDULER_ENABLED=true ← 수집/정리 cron은 상용에서만 돈다(dev는 deploy-dev.yml에서 false)
-#
-# 서버에 이 저장소를 clone해 둘 필요는 없다. docker-compose.yml을 SSH 스크립트가 직접 써서
-# 이미지만 pull 하는 self-contained 방식(기존 방식 유지).
+# deploy.yml과 구조는 같고 다음만 다름(형제 Kotlin 프로젝트 deploy-dev.yml과 동일한 규칙):
+#  - 트리거: dev 브랜치
+#  - 이미지 태그: :dev (prod의 :latest를 덮어쓰지 않음)
+#  - environment: development (개발망 전용 secrets, SSH 키 인증 / 기본 포트)
+#  - SCHEDULER_ENABLED=false  ← dev/prod가 같은 TB_STOCK_NEWS를 보므로 수집 중복 방지
+#  - 승인 게이트 없음
 
-name: Deploy
+name: Deploy (dev)
 
 on:
   push:
     branches:
-      - main
+      - dev
+  workflow_dispatch:
 
 concurrency:
-  group: deploy-main
+  group: deploy-dev
   cancel-in-progress: true
 
 env:
@@ -50,7 +48,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:dev
             ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -58,26 +56,25 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    environment: main        # ← Environment secrets + 승인 게이트
+    environment: development
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
           IMAGE: ghcr.io/kimjiseung97/stock-news-schedule
           IMAGE_TAG: ${{ github.sha }}
-          # stockNews(Kotlin) compose가 띄운 mariadb 컨테이너에 도커 내부 네트워크로 접속한다.
-          # DB_USERNAME / DB_PASSWORD / DB_NAME은 같은 DB이므로 Kotlin 쪽 main environment secrets와 같은 값이어야 함.
+          # 개발망 GCP VM의 stockNews(Kotlin) compose가 띄운 mariadb 컨테이너에 내부 네트워크로 접속한다.
           DB_USERNAME: ${{ secrets.DB_USERNAME }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_NAME: ${{ secrets.DB_NAME }}
           NAVER_NEWS_CLIENT_ID: ${{ secrets.NAVER_NEWS_CLIENT_ID }}
           NAVER_NEWS_CLIENT_SECRET: ${{ secrets.NAVER_NEWS_CLIENT_SECRET }}
-          SCHEDULER_ENABLED: "true"
+          # 개발 서버에서는 cron을 등록하지 않는다(필요하면 "true"로 바꿔 일시적으로 켤 것).
+          SCHEDULER_ENABLED: "false"
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: 2222
+          key: ${{ secrets.SSH_KEY }}
           command_timeout: 40m
           envs: IMAGE,IMAGE_TAG,DB_USERNAME,DB_PASSWORD,DB_NAME,NAVER_NEWS_CLIENT_ID,NAVER_NEWS_CLIENT_SECRET,SCHEDULER_ENABLED
           script: |
@@ -95,7 +92,7 @@ jobs:
 
             services:
               app:
-                image: ${IMAGE:-ghcr.io/kimjiseung97/stock-news-schedule}:${IMAGE_TAG:-latest}
+                image: ${IMAGE:-ghcr.io/kimjiseung97/stock-news-schedule}:${IMAGE_TAG:-dev}
                 restart: unless-stopped
                 logging: *default-logging
                 environment:
@@ -127,7 +124,8 @@ jobs:
             docker compose up -d --remove-orphans
             docker image prune -f
 
-            for i in $(seq 1 30); do
+            # 개발망 GCP 인스턴스는 기동이 느려 prod(60초)보다 길게 잡는다(Kotlin deploy-dev.yml과 동일).
+            for i in $(seq 1 90); do
               if curl -fsS http://localhost:4000/health > /dev/null 2>&1; then
                 echo "healthy"; exit 0
               fi
