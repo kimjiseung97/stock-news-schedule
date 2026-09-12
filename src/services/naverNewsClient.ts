@@ -1,4 +1,5 @@
 import { env } from "../config/env";
+import { stripHtml, stripHtmlOrUndefined } from "../lib/htmlText";
 
 export interface NewsArticle {
   title: string;
@@ -14,18 +15,6 @@ interface NaverNewsItem {
 
 interface NaverNewsSearchResponse {
   items?: NaverNewsItem[];
-}
-
-const HTML_TAG_REGEX = /<.*?>/g;
-
-function unescapeHtml(text: string): string {
-  return text
-    .replace(HTML_TAG_REGEX, "")
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&#39;/g, "'");
 }
 
 interface CacheEntry {
@@ -125,10 +114,12 @@ async function fetchFromApi(query: string, isRetry = false): Promise<NewsArticle
     const articles: NewsArticle[] = [];
     for (const item of body.items ?? []) {
       if (!item.link) continue;
+      // 네이버 뉴스 검색 응답의 title/description에는 검색어 하이라이트용 <b> 태그와 HTML 엔티티가
+      // 섞여 오므로 저장 전에 제거한다(형제 Kotlin 프로젝트의 HtmlTextUtils와 동일 규칙).
       articles.push({
-        title: unescapeHtml(item.title ?? ""),
+        title: stripHtml(item.title ?? ""),
         url: item.link,
-        description: item.description ? unescapeHtml(item.description) : undefined,
+        description: stripHtmlOrUndefined(item.description),
       });
     }
     return articles;

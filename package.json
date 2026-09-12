@@ -6,8 +6,9 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
+    "test": "tsx --test src/lib/htmlText.test.ts",
     "seed:once": "tsx src/jobs/stockSeedJob.ts",
     "news-collect:once": "tsx src/jobs/runNewsCollectOnce.ts",
     "news-cleanup:once": "tsx src/jobs/runNewsCleanupOnce.ts",
