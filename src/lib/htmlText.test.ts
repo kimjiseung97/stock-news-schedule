@@ -36,6 +36,17 @@ describe("htmlText", () => {
     assert.equal(stripHtml("5 &lt; 10 &gt; 3"), "5 < 10 > 3");
   });
 
+  it("줄바꿈 태그와 이름이 겹치는 다른 태그는 개행이 되지 않는다", () => {
+    // <price>가 p로, <link>가 li로 오인되면 엉뚱한 개행이 들어간다.
+    assert.equal(stripHtml("<price>1000</price>원"), "1000원");
+    assert.equal(stripHtml("<link/>애플<header>뉴스</header>"), "애플뉴스");
+  });
+
+  it("짝 없는 서로게이트 엔티티는 원문 그대로 남는다", () => {
+    assert.equal(stripHtml("A&#xD800;B"), "A&#xD800;B");
+    assert.equal(stripHtml("A&#128512;B"), "A\u{1F600}B");
+  });
+
   it("연속 공백과 빈 줄이 정리된다", () => {
     assert.equal(stripHtml("  앞뒤   공백  "), "앞뒤 공백");
     assert.equal(stripHtml("한<br><br><br><br>둘"), "한\n\n둘");

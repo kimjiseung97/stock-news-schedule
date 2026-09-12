@@ -113,6 +113,8 @@ jobs:
                 name: stocknews_default
             COMPOSE_EOF
 
+            # .env에 DB 비밀번호/네이버 API 시크릿이 들어가므로 소유자만 읽도록 생성한다(기본 umask면 0644).
+            umask 077
             cat > .env <<EOF
             IMAGE=$IMAGE
             IMAGE_TAG=$IMAGE_TAG
@@ -122,6 +124,8 @@ jobs:
             SCHEDULER_ENABLED=$SCHEDULER_ENABLED
             PORT=4000
             EOF
+            chmod 600 .env
+            umask 022
 
             docker compose pull
             docker compose up -d --remove-orphans

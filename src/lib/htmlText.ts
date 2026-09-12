@@ -4,7 +4,9 @@
 // 출력 시점의 이스케이프(React 기본 escape, 메일 템플릿 escape)는 별도로 지켜야 한다.
 
 // <br>, </p> 처럼 줄바꿈 의미를 가지는 태그는 개행으로 바꾼 뒤 나머지 태그를 제거한다.
-const LINE_BREAK_TAG_REGEX = /<\s*\/?\s*(br|p|div|li|tr|hr)\s*[^>]*>/gi;
+// 태그명 뒤 경계를 강제하지 않으면 <price>, <link>, <header> 같은 태그가 각각 p/li/hr로 오인돼
+// 엉뚱한 개행이 들어가므로 (?=[\s/>]) lookahead로 태그명이 거기서 끝나는 경우만 잡는다.
+const LINE_BREAK_TAG_REGEX = /<\s*\/?\s*(?:br|p|div|li|tr|hr)(?=[\s/>])[^>]*>/gi;
 const HTML_TAG_REGEX = /<[^>]*>/g;
 const NUMERIC_ENTITY_REGEX = /&#(x[0-9a-fA-F]+|[0-9]+);/g;
 const SPACE_RUN_REGEX = /[ \t ]+/g;
@@ -41,15 +43,11 @@ function unescapeEntities(text: string): string {
   const decodedNumeric: string = text.replace(NUMERIC_ENTITY_REGEX, (match: string, raw: string): string => {
     const isHex: boolean = raw.startsWith("x") || raw.startsWith("X");
     const code: number = isHex ? Number.parseInt(raw.slice(1), 16) : Number.parseInt(raw, 10);
-    if (!Number.isNaN(code) && code >= 1 && code <= 0x10ffff) {
-      try {
-        return String.fromCodePoint(code);
-      } catch {
-        // 서로게이트 영역(0xD800~0xDFFF)처럼 코드포인트로 쓸 수 없는 값은 원문 그대로 둔다.
-        return match;
-      }
-    }
-    return match;
+    // 서로게이트 영역(0xD800~0xDFFF)은 String.fromCodePoint가 예외를 던지지 않고 그대로 통과시키는데,
+    // 짝 없는 서로게이트가 들어가면 DB/JSON 인코딩 단계에서 깨지므로 원문 그대로 남긴다.
+    const isValidCodePoint: boolean =
+      !Number.isNaN(code) && code >= 1 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff);
+    return isValidCodePoint ? String.fromCodePoint(code) : match;
   });
 
   return NAMED_ENTITIES.reduce<string>((acc, [entity, replacement]) => acc.replace(entity, replacement), decodedNumeric);
